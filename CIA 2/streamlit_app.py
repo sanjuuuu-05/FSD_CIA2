@@ -21,7 +21,6 @@ st.markdown(
 )
 
 
-@st.cache_data
 def load_page() -> str:
     html = (HERE / "index.html").read_text(encoding="utf-8")
     sample_path = HERE / "sample-route.geojson"
