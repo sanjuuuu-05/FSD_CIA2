@@ -241,31 +241,66 @@
   const map = L.map('map', {
     zoomControl: true,
     maxBounds: AREA_BOUNDS.pad(0.1),
-    maxBoundsViscosity: 1.0,
+    maxBoundsViscosity: 0.65,
     minZoom: 8,
+    preferCanvas: true,
   });
+  map.setView([11.85, 77.2], 8);
   map.fitBounds(AREA_BOUNDS);
-  // Route-only by default: tiles are optional (toggle). Attribution is always visible.
-  const tileOpts = { maxZoom: 19, bounds: AREA_BOUNDS.pad(0.1) }; // no tile requests outside the area
-  const osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', tileOpts);
-  // Fallback if tile.openstreetmap.org refuses requests (HTTP 403 "Access blocked", e.g. page opened without a Referer).
-  // CARTO tiles are also built from OpenStreetMap data; attribution is required and shown.
-  const fallbackTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    ...tileOpts, subdomains: 'abcd',
-    attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>',
-  });
-  let tiles = osmTiles; // the layer currently in use
-  tiles.addTo(map); // basemap on by default; the toggle button can hide it
+  // Basemap. OpenStreetMap tiles are used first; if the public tile server
+  // refuses the browser request, fall back to a compatible OSM-derived style.
+  // This keeps the route functional instead of leaving a blank map.
+  const tileOpts = {
+    maxZoom: 19,
+    bounds: AREA_BOUNDS.pad(0.1),
+    updateWhenIdle: true,
+    keepBuffer: 2,
+  };
+
+  const osmTiles = L.tileLayer(
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+      ...tileOpts,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+    }
+  );
+
+  const fallbackTiles = L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    {
+      ...tileOpts,
+      subdomains: 'abcd',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+    }
+  );
+
+  let tiles = osmTiles;
   let tileErrors = 0;
+  let fallbackShown = false;
+
+  function useFallbackTiles() {
+    if (fallbackShown) return;
+    fallbackShown = true;
+
+    const wasVisible = map.hasLayer(tiles);
+    if (wasVisible) map.removeLayer(tiles);
+    tiles = fallbackTiles;
+    if (wasVisible) tiles.addTo(map);
+
+    setStatus(
+      'idle',
+      'The OpenStreetMap tile server did not respond. A fallback map using OpenStreetMap data is being displayed.'
+    );
+  }
+
   osmTiles.on('tileerror', () => {
     tileErrors += 1;
-    if (tileErrors < 4 || tiles === fallbackTiles) return; // tolerate a few transient errors
-    const wasOn = map.hasLayer(osmTiles);
-    map.removeLayer(osmTiles);
-    tiles = fallbackTiles;
-    if (wasOn) tiles.addTo(map);
-    setStatus('idle', 'OpenStreetMap’s tile server blocked or refused the tiles, so a fallback map style (also built from OpenStreetMap data) is shown. For best results, open this page via http://localhost.');
+    // One failed tile can be transient. Switch after a small number of
+    // failures so a blocked tile server does not leave the map unusable.
+    if (tileErrors >= 2) useFallbackTiles();
   });
+
+  tiles.addTo(map);
   map.attributionControl.addAttribution('Place &amp; route data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors');
   L.control.scale({ imperial: false }).addTo(map);
   // Outline of the supported area so users can see where they can click
@@ -570,7 +605,8 @@
   // 7. click: toggle the optional OSM basemap tiles
   el.basemap.addEventListener('click', () => {
     const on = !map.hasLayer(tiles);
-    if (on) tiles.addTo(map); else map.removeLayer(tiles);
+    if (on) tiles.addTo(map);
+    else map.removeLayer(tiles);
     el.basemap.setAttribute('aria-pressed', String(on));
     el.basemap.textContent = on ? 'Hide basemap' : 'Show basemap';
   });
@@ -591,7 +627,9 @@
         { latlngs, distance: null, duration: null });
       setStatus('idle', 'Showing bundled sample data, not a live result. Distance and time are not available for it.');
     } catch (err) {
-      setStatus('error', err instanceof AppError ? err.message : 'Could not load the sample route.');
+      setStatus('error', err instanceof AppError
+        ? err.message
+        : 'Could not load the bundled sample route. Make sure sample-route.geojson is in the same folder as this page.');
     }
   });
 
@@ -652,6 +690,9 @@
 
   // 6. window resize: keep the route in view when layout changes
   window.addEventListener('resize', () => { map.invalidateSize(); });
+  window.addEventListener('load', () => {
+    setTimeout(() => map.invalidateSize(), 100);
+  });
 })();
 </script>
 </body>
