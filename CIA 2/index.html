@@ -7,7 +7,7 @@
   <!-- OSM tile servers require a Referer; this makes sure the origin is sent (only works over http/https, not file://) -->
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <title>OSM Route Explorer</title>
-  <meta name="description" content="Plan driving routes anywhere in India, follow turn-by-turn directions, and explore major cities on an interactive map." />
+  <meta name="description" content="Plan car, bike or walking routes anywhere in India, follow turn-by-turn directions, and explore major cities on an interactive map." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <!-- Tailwind via CDN: fine for a prototype, not a production-optimised build. -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -226,6 +226,14 @@
     }
 
     .panel[hidden] { display: none !important; }
+    .mode-btn {
+      display: flex; flex-direction: column; align-items: center; gap: .25rem; cursor: pointer;
+      padding: .55rem .4rem; border-radius: .75rem; font-size: .85rem; font-weight: 600;
+      color: #cbd5e1; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18);
+      transition: background-color .2s, border-color .2s, color .2s;
+    }
+    .mode-btn:hover { background: rgba(255,255,255,.14); }
+    .mode-btn[aria-checked="true"] { background: rgba(34,211,238,.18); border-color: #22d3ee; color: #67e8f9; }
     .nav-link {
       display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap;
       padding: .45rem .85rem; border-radius: .6rem; font-size: .9rem; font-weight: 600;
@@ -283,11 +291,11 @@
       class="glass relative z-10 m-3 flex flex-col gap-4 rounded-2xl p-5 lg:m-0 lg:w-[400px] lg:shrink-0 lg:overflow-y-auto">
       <div id="view-plan" class="panel flex flex-col gap-4" data-panel="plan">
       <header>
-        <p class="text-xs font-semibold uppercase tracking-widest text-cyan-300">Driving routes</p>
+        <p class="text-xs font-semibold uppercase tracking-widest text-cyan-300">Car · Bike · Walk routes</p>
         <h1 class="text-2xl font-bold tracking-tight">OSM Route Explorer</h1>
         <p class="mt-1 text-sm text-slate-300">Type places, click <em>Pick on map</em>, or use <em>My location</em> to
           set a start and destination anywhere in <strong>India</strong>. You get the full route, both endpoints,
-          trip details and turn-by-turn directions. Driving routes only.</p>
+          trip details and turn-by-turn directions. Choose <strong>Car</strong>, <strong>Bike</strong> or <strong>Walk</strong> below.</p>
       </header>
 
       <form id="route-form" novalidate class="flex flex-col gap-3" aria-describedby="form-help">
@@ -326,6 +334,21 @@
           <p id="destination-error" class="field-error" hidden></p>
         </div>
 
+        <fieldset>
+          <legend class="mb-1 text-sm font-medium">Travel mode</legend>
+          <div id="modes" class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Travel mode">
+            <button type="button" role="radio" aria-checked="true" data-mode="car" class="mode-btn">
+              <svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M3 13l2-6h14l2 6v4H3z"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/></svg>
+              Car</button>
+            <button type="button" role="radio" aria-checked="false" data-mode="bike" class="mode-btn">
+              <svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-8h5l3 8M10 8l3 8M9 6h3"/></svg>
+              Bike</button>
+            <button type="button" role="radio" aria-checked="false" data-mode="foot" class="mode-btn">
+              <svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4.5" r="1.8"/><path d="M10 21l2-6-3-3 2-5 4 2 2 3M9 12l-3 2"/></svg>
+              Walk</button>
+          </div>
+        </fieldset>
+
         <button id="submit" type="submit" class="btn-primary">
           <span id="submit-spinner" class="spinner" hidden aria-hidden="true"></span>
           <span id="submit-label">Show route</span>
@@ -351,7 +374,7 @@
       <section id="summary" class="summary" aria-labelledby="summary-title" hidden>
         <h2 id="summary-title" class="mb-2 text-sm font-semibold uppercase tracking-wide text-cyan-300">Route summary
           <span
-            class="ml-1 rounded bg-white/10 px-2 py-0.5 text-[11px] normal-case tracking-normal text-slate-200">Driving</span>
+            class="ml-1 rounded bg-white/10 px-2 py-0.5 text-[11px] normal-case tracking-normal text-slate-200" id="sum-mode">Car</span>
         </h2>
         <dl class="space-y-3 text-sm">
           <div class="flex gap-3">
@@ -369,7 +392,7 @@
             <dd id="sum-distance" class="text-lg font-semibold">—</dd>
           </div>
           <div class="rounded-lg bg-white/5 p-3">
-            <dt class="text-xs text-slate-300">Est. driving time</dt>
+            <dt class="text-xs text-slate-300" id="sum-time-label">Est. driving time</dt>
             <dd id="sum-duration" class="text-lg font-semibold">—</dd>
           </div>
         </dl>
@@ -414,7 +437,7 @@
           <p class="text-xs font-semibold uppercase tracking-widest text-cyan-300">About</p>
           <h2 class="text-2xl font-bold tracking-tight text-slate-100">About this tool</h2>
         </header>
-        <p>OSM Route Explorer finds a place with Nominatim, calculates a driving route with the public OSRM demo server and draws it with Leaflet.</p>
+        <p>OSM Route Explorer finds a place with Nominatim, calculates a car, bike or walking route with public OSRM servers and draws it with Leaflet.</p>
         <p>The cyan outline is a simplified India boundary used to limit where you can search and click. It is approximate and not an authoritative map of international borders.</p>
         <p>Estimates ignore live traffic. Long inter-state routes can take a while on the free demo server.</p>
         <p><a class="btn-ghost" href="#plan">Back to route planner</a></p>
@@ -422,7 +445,7 @@
 
       <footer class="mt-auto pt-2 text-xs text-slate-400">
         Educational prototype. Geocoding by <a class="underline" href="https://nominatim.org/" target="_blank"
-          rel="noopener">Nominatim</a>, routing by the <a class="underline" href="https://project-osrm.org/"
+          rel="noopener">Nominatim</a>, routing by <a class="underline" href="https://project-osrm.org/"
           target="_blank" rel="noopener">OSRM</a> demo server. Data © <a class="underline"
           href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>
         (ODbL).
@@ -451,7 +474,14 @@
       'use strict';
 
       const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
-      const OSRM = 'https://router.project-osrm.org/route/v1/driving';
+      // Each travel mode uses its own routing profile. The profile name in the URL path is always "driving";
+      // the server (routed-car / routed-bike / routed-foot) decides the real profile.
+      const MODES = {
+        car:  { label: 'Car',  verb: 'driving', url: 'https://routing.openstreetmap.de/routed-car/route/v1/driving',  color: '#06b6d4', time: 'Est. driving time' },
+        bike: { label: 'Bike', verb: 'cycling', url: 'https://routing.openstreetmap.de/routed-bike/route/v1/driving', color: '#a3e635', time: 'Est. cycling time' },
+        foot: { label: 'Walk', verb: 'walking', url: 'https://routing.openstreetmap.de/routed-foot/route/v1/driving', color: '#f59e0b', time: 'Est. walking time' },
+      };
+      let mode = 'car';
       const TIMEOUT_MS = 12000;
       const MIN_GAP_MS = 1000; // Nominatim policy: max 1 request/second
 
@@ -641,11 +671,11 @@
       // ---- Routing ----
       async function fetchRoute(a, b) {
         const coords = `${a.lon},${a.lat};${b.lon},${b.lat}`;
-        const url = `${OSRM}/${coords}?overview=full&geometries=geojson&steps=true`;
+        const url = `${MODES[mode].url}/${coords}?overview=full&geometries=geojson&steps=true&alternatives=false`; // one best route only
         const data = await fetchJson(url, 'The routing service (OSRM)');
 
         if (!data || data.code !== 'Ok') {
-          if (data && data.code === 'NoRoute') throw new AppError('No driving route could be found between these places (for example, they may be separated by water).');
+          if (data && data.code === 'NoRoute') throw new AppError(`No ${MODES[mode].verb} route could be found between these places (for example, they may be separated by water or unreachable by this mode).`);
           throw new AppError('The routing service could not calculate a route for these places.');
         }
         const r = Array.isArray(data.routes) ? data.routes[0] : null;
@@ -726,7 +756,7 @@
       function showRoute(a, b, route) {
         clearRoute();
         removePickMarkers(); // the route's own A/B markers take over
-        routeLayer = L.polyline(route.latlngs, { color: '#06b6d4', weight: 6, opacity: 0.9, lineJoin: 'round' }).addTo(map);
+        routeLayer = L.polyline(route.latlngs, { color: MODES[mode].color, weight: 6, opacity: 0.9, lineJoin: 'round' }).addTo(map);
         const mA = L.marker([a.lat, a.lon], { icon: pinIcon('marker-start', 'A'), title: 'Start' }).addTo(map).bindPopup(`<strong>Start</strong><br>${escapeHtml(a.name)}`);
         const mB = L.marker([b.lat, b.lon], { icon: pinIcon('marker-end', 'B'), title: 'Destination' }).addTo(map).bindPopup(`<strong>Destination</strong><br>${escapeHtml(b.name)}`);
         markers = [mA, mB];
@@ -738,6 +768,8 @@
         el.sumEnd.textContent = b.name;
         el.sumDist.textContent = fmtDistance(route.distance);
         el.sumDur.textContent = fmtDuration(route.duration);
+        $('sum-mode').textContent = MODES[mode].label;
+        $('sum-time-label').textContent = MODES[mode].time;
         el.empty.hidden = true;
         el.summary.hidden = false;
         el.refit.disabled = false;
@@ -763,10 +795,10 @@
           const a = await resolvePlace('start');
           setStatus('loading', 'Finding your destination…');
           const b = await resolvePlace('dest');
-          setStatus('loading', 'Calculating driving route…');
+          setStatus('loading', `Calculating ${MODES[mode].verb} route…`);
           const route = await fetchRoute(a, b);
           showRoute(a, b, route);
-          setStatus('success', `Driving route found: ${fmtDistance(route.distance)}, about ${fmtDuration(route.duration)}.`);
+          setStatus('success', `${MODES[mode].label} route found: ${fmtDistance(route.distance)}, about ${fmtDuration(route.duration)}.`);
         } catch (err) {
           const msg = err instanceof AppError ? err.message : 'Something unexpected went wrong. Please try again.';
           if (!(err instanceof AppError)) console.error(err);
@@ -904,6 +936,20 @@
         });
         document.querySelector('aside').scrollTop = 0;
       }
+      // Switch views without relying on URL hashes, so navigation also works inside an embedded
+      // (Streamlit srcdoc) iframe. The hash is updated only when the browser allows it.
+      function goView(name) {
+        showView(name);
+        try { history.replaceState(null, '', '#' + name); } catch (e) { /* embedded page: ignore */ }
+      }
+      document.addEventListener('click', (e) => {
+        const a = e.target.closest('a[href^="#"]');
+        if (!a) return;
+        const name = a.getAttribute('href').slice(1);
+        if (!views.includes(name)) return; // leave other anchors (e.g. skip link) alone
+        e.preventDefault();
+        goView(name);
+      });
       window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
       showView(location.hash.slice(1));
 
@@ -1003,7 +1049,7 @@
       function setCity(which, c) {
         setPick(which, c.lat, c.lon, c.n);
         setStatus('idle', `${which === 'start' ? 'Start' : 'Destination'} set to ${c.n}. ${inputOf(which === 'start' ? 'dest' : 'start').value.trim() ? 'Choose Show route.' : 'Now set the other end.'}`);
-        location.hash = '#plan';
+        goView('plan');
       }
 
       CITIES.forEach((c) => {
@@ -1047,7 +1093,7 @@
           if (busy) return;
           setPick('start', cityByName[a].lat, cityByName[a].lon, a);
           setPick('dest', cityByName[b].lat, cityByName[b].lon, b);
-          location.hash = '#plan';
+          goView('plan');
           lookup();
         });
         $('presets').appendChild(btn);
@@ -1056,6 +1102,16 @@
       const fitIndia = () => map.fitBounds(AREA_BOUNDS);
       $('fit-india').addEventListener('click', fitIndia);
       $('explore-fit').addEventListener('click', fitIndia);
+
+      // 14. click: choose the travel mode (re-runs the route if one is already shown)
+      const modeBtns = document.querySelectorAll('[data-mode]');
+      modeBtns.forEach((b) => b.addEventListener('click', () => {
+        if (busy || b.dataset.mode === mode) return;
+        mode = b.dataset.mode;
+        modeBtns.forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+        if (!el.summary.hidden && el.start.value.trim() && el.dest.value.trim()) lookup();
+        else setStatus('idle', `Travel mode: ${MODES[mode].label}. Choose Show route.`);
+      }));
 
       // 6. window resize: keep the route in view when layout changes
       window.addEventListener('resize', () => { map.invalidateSize(); });
