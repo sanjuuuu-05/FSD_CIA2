@@ -15,10 +15,14 @@ HERE = Path(__file__).parent
 
 st.set_page_config(page_title="OSM Route Explorer", layout="wide")
 
-# Remove Streamlit's default padding so the map can use the full width.
+# Use the full width, but keep the top clear of Streamlit's fixed header.
 st.markdown(
-    "<style>.block-container{padding:0.5rem 1rem 0 1rem;max-width:100%}"
-    "header[data-testid='stHeader']{height:0}</style>",
+    "<style>"
+    # Leave room for Streamlit's fixed header so it does not cover the page's nav bar.
+    ".block-container{padding:3.75rem 1rem 0 1rem;max-width:100%}"
+    "header[data-testid='stHeader']{background:transparent}"
+    "iframe{border:0}"
+    "</style>",
     unsafe_allow_html=True,
 )
 
