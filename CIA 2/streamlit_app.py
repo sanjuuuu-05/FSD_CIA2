@@ -1,6 +1,8 @@
 """Streamlit wrapper for OSM Route Explorer.
 
 Embeds the existing single-file front end (index.html) in a Streamlit page.
+The page now has its own top navigation (Route planner, Directions, Explore India, About)
+and covers all of India. Keep index.html in the same folder as this file.
 The sample route is inlined because an embedded page cannot fetch sibling files.
 """
 import json
@@ -35,9 +37,10 @@ def load_page() -> str:
 
 
 # The page is a full-height app; scrolling=True lets the side panel scroll on small screens.
-components.html(load_page(), height=820, scrolling=True)
+components.html(load_page(), height=880, scrolling=True)
 
 st.caption(
     "Prototype using public demo services (Nominatim, OSRM, map tiles). "
+    "The India outline is simplified and approximate. "
     "Map data © OpenStreetMap contributors."
 )
