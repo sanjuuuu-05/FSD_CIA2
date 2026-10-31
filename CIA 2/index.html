@@ -7,7 +7,7 @@
   <!-- OSM tile servers require a Referer; this makes sure the origin is sent (only works over http/https, not file://) -->
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <title>OSM Route Explorer</title>
-  <meta name="description" content="Explore a driving route between two places on an interactive OpenStreetMap map." />
+  <meta name="description" content="Plan driving routes anywhere in India, follow turn-by-turn directions, and explore major cities on an interactive map." />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <!-- Tailwind via CDN: fine for a prototype, not a production-optimised build. -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -224,6 +224,35 @@
       background-image: linear-gradient(rgba(255, 255, 255, .04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .04) 1px, transparent 1px);
       background-size: 48px 48px;
     }
+
+    .panel[hidden] { display: none !important; }
+    .nav-link {
+      display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap;
+      padding: .45rem .85rem; border-radius: .6rem; font-size: .9rem; font-weight: 600;
+      color: #cbd5e1; border: 1px solid transparent; transition: background-color .2s, color .2s;
+    }
+    .nav-link:hover { background: rgba(255,255,255,.08); color: #fff; }
+    .nav-link[aria-current="page"] { background: rgba(34,211,238,.15); border-color: rgba(34,211,238,.45); color: #67e8f9; }
+    .chip {
+      padding: .3rem .65rem; border-radius: 9999px; font-size: .8rem; cursor: pointer;
+      color: #e2e8f0; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16);
+      transition: background-color .2s;
+    }
+    .chip:hover { background: rgba(34,211,238,.22); }
+    .step {
+      display: flex; gap: .7rem; align-items: flex-start; width: 100%; text-align: left;
+      padding: .6rem .7rem; border-radius: .7rem; cursor: pointer;
+      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1);
+    }
+    .step:hover { background: rgba(34,211,238,.12); }
+    .step-icon {
+      flex: none; width: 1.9rem; height: 1.9rem; border-radius: 9999px; display: grid; place-items: center;
+      background: rgba(34,211,238,.18); color: #67e8f9; font-weight: 700;
+    }
+    .city-dot-popup button { margin-top: .4rem; margin-right: .3rem; padding: .25rem .55rem; border-radius: .4rem;
+      border: 0; cursor: pointer; font-weight: 600; background: #0891b2; color: #fff; }
+    .city-dot-popup button.end { background: #dc2626; }
+    .leaflet-popup-content { color: #0f172a; }
   </style>
 </head>
 
@@ -234,16 +263,31 @@
 
   <div class="bg-layers" aria-hidden="true"></div>
 
-  <div class="relative flex min-h-screen flex-col lg:h-screen lg:flex-row lg:p-4 lg:gap-4">
+  <!-- Top navigation -->
+  <nav class="glass sticky top-0 z-[2000] flex h-[60px] items-center gap-3 px-4" aria-label="Main navigation">
+    <a href="#plan" class="flex shrink-0 items-center gap-2 font-bold tracking-tight">
+      <svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5 text-cyan-300" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <span>OSM Route Explorer</span>
+    </a>
+    <div class="ml-auto flex gap-1 overflow-x-auto" role="list">
+      <a class="nav-link" role="listitem" href="#plan" data-nav="plan">Route planner</a>
+      <a class="nav-link" role="listitem" href="#directions" data-nav="directions">Directions <span id="nav-steps" class="rounded bg-white/10 px-1.5 text-[11px]" hidden></span></a>
+      <a class="nav-link" role="listitem" href="#explore" data-nav="explore">Explore India</a>
+      <a class="nav-link" role="listitem" href="#about" data-nav="about">About</a>
+    </div>
+  </nav>
+
+  <div class="relative flex min-h-[calc(100vh-60px)] flex-col lg:h-[calc(100vh-60px)] lg:min-h-0 lg:flex-row lg:p-4 lg:gap-4">
     <!-- Planning panel -->
     <aside
       class="glass relative z-10 m-3 flex flex-col gap-4 rounded-2xl p-5 lg:m-0 lg:w-[400px] lg:shrink-0 lg:overflow-y-auto">
+      <div id="view-plan" class="panel flex flex-col gap-4" data-panel="plan">
       <header>
         <p class="text-xs font-semibold uppercase tracking-widest text-cyan-300">Driving routes</p>
         <h1 class="text-2xl font-bold tracking-tight">OSM Route Explorer</h1>
         <p class="mt-1 text-sm text-slate-300">Type places, click <em>Pick on map</em>, or use <em>My location</em> to
-          set a start and destination and see the whole route, both endpoints, and key trip details. This prototype
-          calculates <strong>driving</strong> routes only, within the <strong>Bengaluru–Coimbatore region</strong>.</p>
+          set a start and destination anywhere in <strong>India</strong>. You get the full route, both endpoints,
+          trip details and turn-by-turn directions. Driving routes only.</p>
       </header>
 
       <form id="route-form" novalidate class="flex flex-col gap-3" aria-describedby="form-help">
@@ -332,6 +376,50 @@
         <p class="mt-3 text-xs text-slate-400">Estimates come from a public demo service and ignore live traffic.</p>
       </section>
 
+      </div><!-- /view-plan -->
+
+      <!-- Directions -->
+      <div id="view-directions" class="panel flex flex-col gap-3" data-panel="directions" hidden>
+        <header>
+          <p class="text-xs font-semibold uppercase tracking-widest text-cyan-300">Turn by turn</p>
+          <h2 class="text-2xl font-bold tracking-tight">Directions</h2>
+        </header>
+        <p id="dir-empty" class="rounded-xl border border-dashed border-white/20 p-4 text-sm text-slate-300">
+          No route yet. Plan one in <a class="underline" href="#plan">Route planner</a> or pick a popular route in
+          <a class="underline" href="#explore">Explore India</a>, then come back for step-by-step directions.</p>
+        <div id="dir-wrap" hidden>
+          <p id="dir-total" class="mb-2 text-sm text-slate-300"></p>
+          <ol id="dir-list" class="flex flex-col gap-2"></ol>
+        </div>
+      </div>
+
+      <!-- Explore India -->
+      <div id="view-explore" class="panel flex flex-col gap-4" data-panel="explore" hidden>
+        <header>
+          <p class="text-xs font-semibold uppercase tracking-widest text-cyan-300">Explore</p>
+          <h2 class="text-2xl font-bold tracking-tight">Explore India</h2>
+          <p class="mt-1 text-sm text-slate-300">Jump to a major city, then set it as your start or destination from its popup.</p>
+        </header>
+        <button id="explore-fit" type="button" class="btn-ghost self-start">Show whole India</button>
+        <section aria-labelledby="pop-title">
+          <h3 id="pop-title" class="mb-2 text-sm font-semibold uppercase tracking-wide text-cyan-300">Popular routes</h3>
+          <div id="presets" class="flex flex-wrap gap-2"></div>
+        </section>
+        <div id="city-groups" class="flex flex-col gap-4"></div>
+      </div>
+
+      <!-- About -->
+      <div id="view-about" class="panel flex flex-col gap-3 text-sm text-slate-300" data-panel="about" hidden>
+        <header>
+          <p class="text-xs font-semibold uppercase tracking-widest text-cyan-300">About</p>
+          <h2 class="text-2xl font-bold tracking-tight text-slate-100">About this tool</h2>
+        </header>
+        <p>OSM Route Explorer finds a place with Nominatim, calculates a driving route with the public OSRM demo server and draws it with Leaflet.</p>
+        <p>The cyan outline is a simplified India boundary used to limit where you can search and click. It is approximate and not an authoritative map of international borders.</p>
+        <p>Estimates ignore live traffic. Long inter-state routes can take a while on the free demo server.</p>
+        <p><a class="btn-ghost" href="#plan">Back to route planner</a></p>
+      </div>
+
       <footer class="mt-auto pt-2 text-xs text-slate-400">
         Educational prototype. Geocoding by <a class="underline" href="https://nominatim.org/" target="_blank"
           rel="noopener">Nominatim</a>, routing by the <a class="underline" href="https://project-osrm.org/"
@@ -349,6 +437,7 @@
         aria-label="Interactive map. Use arrow keys to pan and plus or minus to zoom."></div>
       <div class="absolute right-3 top-3 z-[1000] flex gap-2">
         <button id="basemap" type="button" class="btn-ghost glass" aria-pressed="true">Hide basemap</button>
+        <button id="fit-india" type="button" class="btn-ghost glass" aria-label="Show the whole of India">India</button>
         <button id="refit" type="button" class="btn-ghost glass" disabled aria-label="Fit map to the whole route">Fit
           route</button>
       </div>
@@ -379,8 +468,10 @@
       };
 
       // ---- Supported area: change this one constant to cover a different region ----
-      // [south, west, north, east] — Bengaluru to Coimbatore corridor.
-      const AREA = { name: 'Bengaluru–Coimbatore region', south: 10.6, west: 76.4, north: 13.5, east: 78.0 };
+      // [south, west, north, east] — all of India including Andaman & Nicobar and Lakshadweep.
+      const AREA = { name: 'India', south: 6.5, west: 68.0, north: 37.2, east: 97.5 };
+      // Simplified India outline (generated from public state boundaries; approximate).
+      const INDIA_OUTLINE = {"type":"MultiPolygon","coordinates":[[[[70.86,20.74],[70.84,20.69],[70.67,20.76],[70.72,20.95],[70.67,20.75],[70.44,20.85],[70.1,21.1],[69.71,21.53],[69.76,21.58],[69.74,21.65],[69.68,21.64],[69.72,21.6],[69.7,21.59],[69.63,21.64],[69.69,21.6],[69.72,21.57],[69.71,21.54],[69.59,21.62],[69.06,22.13],[68.94,22.31],[69.07,22.48],[69.07,22.4],[69.19,22.42],[69.16,22.31],[69.23,22.26],[69.32,22.29],[69.33,22.33],[69.49,22.34],[69.52,22.39],[69.5,22.44],[69.59,22.36],[69.58,22.32],[69.7,22.4],[69.67,22.45],[69.73,22.47],[69.8,22.4],[69.83,22.5],[69.87,22.45],[69.98,22.54],[70.16,22.55],[70.24,22.66],[70.25,22.69],[70.24,22.7],[70.26,22.71],[70.25,22.73],[70.3,22.76],[70.35,22.87],[70.42,22.93],[70.47,23.01],[70.49,23.08],[70.44,23.06],[70.4,23.03],[70.35,22.93],[70.2,23.0],[70.22,22.96],[70.12,22.96],[70.15,23.03],[70.11,22.97],[70.13,22.95],[70.09,22.95],[70.13,22.92],[69.8,22.85],[69.71,22.73],[69.63,22.8],[69.6,22.76],[69.19,22.84],[68.66,23.15],[68.59,23.23],[68.6,23.24],[68.6,23.22],[68.63,23.21],[68.6,23.24],[68.67,23.27],[68.63,23.3],[68.73,23.3],[68.76,23.33],[68.65,23.3],[68.64,23.35],[68.61,23.38],[68.56,23.39],[68.56,23.42],[68.54,23.42],[68.52,23.49],[68.49,23.5],[68.5,23.65],[68.76,23.87],[68.6,23.85],[68.53,23.76],[68.52,23.82],[68.66,23.92],[68.54,23.95],[68.75,23.96],[68.77,24.29],[68.83,24.31],[68.89,24.2],[68.95,24.28],[69.0,24.23],[69.09,24.27],[69.2,24.24],[69.6,24.28],[69.72,24.18],[70.0,24.17],[70.12,24.29],[70.57,24.42],[70.61,24.4],[70.57,24.25],[70.81,24.22],[70.96,24.35],[71.13,24.4],[71.01,24.44],[71.02,24.63],[71.11,24.68],[70.95,24.93],[70.89,25.14],[70.67,25.39],[70.67,25.7],[70.4,25.66],[70.28,25.7],[70.1,25.94],[70.08,26.07],[70.17,26.25],[70.17,26.55],[70.07,26.6],[69.82,26.59],[69.52,26.74],[69.48,26.81],[69.59,27.18],[70.02,27.56],[70.16,27.83],[70.37,28.01],[70.56,28.02],[70.67,27.91],[70.76,27.72],[70.88,27.7],[71.27,27.84],[71.66,27.87],[71.9,27.96],[71.93,28.13],[72.18,28.36],[72.3,28.66],[72.38,28.76],[72.94,29.03],[73.27,29.56],[73.39,29.94],[73.79,30.07],[73.96,30.19],[73.87,30.38],[73.99,30.5],[74.08,30.53],[74.09,30.61],[74.28,30.73],[74.32,30.85],[74.54,30.99],[74.56,31.07],[74.62,31.05],[74.69,31.1],[74.62,31.14],[74.55,31.09],[74.5,31.14],[74.51,31.27],[74.64,31.46],[74.57,31.5],[74.6,31.57],[74.52,31.72],[74.6,31.89],[74.71,31.96],[74.81,31.96],[74.91,32.07],[75.0,32.03],[75.16,32.07],[75.2,32.12],[75.24,32.09],[75.36,32.23],[75.33,32.34],[75.07,32.48],[74.98,32.45],[74.7,32.48],[74.64,32.61],[74.7,32.84],[74.53,32.74],[74.41,32.9],[74.32,32.92],[74.35,33.02],[74.21,33.04],[74.11,33.16],[74.01,33.2],[74.02,33.26],[74.1,33.27],[74.17,33.35],[74.19,33.46],[74.1,33.57],[74.03,33.57],[73.96,33.72],[74.07,33.82],[74.22,33.87],[74.26,33.97],[74.21,34.04],[73.88,34.05],[73.98,34.26],[73.9,34.36],[73.76,34.37],[73.95,34.57],[73.96,34.7],[74.14,34.69],[74.38,34.8],[74.58,34.77],[74.7,34.69],[75.25,34.65],[75.38,34.55],[75.75,34.52],[76.04,34.67],[76.16,34.64],[76.47,34.79],[76.68,34.76],[76.75,34.93],[76.87,34.97],[77.0,34.94],[77.02,35.04],[77.16,35.05],[77.82,35.5],[77.9,35.43],[77.99,35.49],[78.11,35.48],[77.99,35.35],[78.04,35.2],[78.12,35.14],[78.08,35.08],[78.25,34.7],[78.43,34.6],[78.57,34.61],[78.98,34.33],[78.96,34.22],[78.71,34.07],[78.77,34.02],[78.71,33.92],[78.78,33.77],[78.71,33.65],[78.82,33.48],[79.07,33.3],[79.07,33.23],[79.41,33.18],[79.35,32.98],[79.54,32.75],[79.55,32.61],[79.31,32.49],[79.2,32.51],[79.13,32.46],[79.1,32.37],[78.98,32.34],[78.78,32.48],[78.75,32.7],[78.4,32.52],[78.52,32.42],[78.44,32.25],[78.59,32.22],[78.6,32.12],[78.77,32.0],[78.69,31.79],[78.83,31.62],[78.71,31.52],[78.8,31.45],[78.78,31.4],[79.0,31.12],[78.91,31.23],[78.92,31.33],[79.05,31.47],[79.19,31.35],[79.28,31.17],[79.38,31.12],[79.41,31.04],[79.5,31.04],[79.59,30.94],[79.74,31.01],[79.85,30.98],[80.1,30.78],[80.16,30.81],[80.22,30.76],[80.18,30.67],[80.22,30.58],[80.53,30.45],[80.58,30.49],[80.81,30.32],[81.02,30.25],[80.91,30.22],[80.88,30.13],[80.75,30.01],[80.61,29.96],[80.5,29.8],[80.37,29.75],[80.41,29.59],[80.3,29.45],[80.24,29.44],[80.32,29.32],[80.3,29.21],[80.25,29.22],[80.27,29.14],[80.15,29.1],[80.14,29.01],[80.06,28.92],[80.07,28.83],[80.52,28.55],[80.51,28.67],[80.57,28.69],[80.92,28.46],[81.21,28.36],[81.32,28.13],[81.45,28.16],[81.48,28.08],[81.89,27.86],[81.97,27.93],[82.07,27.92],[82.45,27.68],[82.71,27.72],[82.76,27.59],[82.74,27.5],[83.19,27.45],[83.32,27.33],[83.41,27.41],[83.39,27.48],[83.62,27.47],[83.83,27.37],[83.83,27.32],[83.91,27.38],[83.87,27.43],[84.03,27.43],[84.12,27.51],[84.26,27.45],[84.3,27.38],[84.62,27.34],[84.69,27.21],[84.64,27.05],[84.96,26.96],[84.97,26.92],[85.06,26.89],[85.02,26.86],[85.2,26.87],[85.21,26.76],[85.34,26.74],[85.64,26.87],[85.74,26.8],[85.73,26.65],[85.85,26.61],[85.85,26.57],[86.03,26.67],[86.22,26.59],[86.33,26.62],[86.73,26.42],[86.9,26.46],[87.07,26.59],[87.09,26.45],[87.34,26.35],[87.37,26.41],[87.47,26.44],[87.61,26.38],[87.68,26.44],[87.77,26.41],[87.79,26.47],[87.85,26.44],[87.89,26.49],[88.03,26.36],[88.1,26.44],[88.11,26.54],[88.23,26.55],[88.11,26.54],[88.1,26.53],[88.1,26.54],[88.19,26.77],[88.14,26.99],[87.99,27.11],[88.02,27.22],[88.08,27.43],[88.05,27.5],[88.2,27.84],[88.13,27.88],[88.12,27.95],[88.39,27.98],[88.54,28.04],[88.61,28.13],[88.83,28.02],[88.88,27.89],[88.85,27.67],[88.77,27.56],[88.78,27.46],[88.92,27.33],[88.74,27.15],[88.87,27.11],[88.87,26.95],[88.92,27.0],[88.96,26.92],[89.02,26.94],[89.13,26.81],[89.38,26.87],[89.46,26.81],[89.64,26.78],[89.63,26.72],[89.86,26.7],[89.87,26.45],[89.86,26.74],[90.13,26.75],[90.19,26.77],[90.21,26.85],[90.41,26.9],[90.7,26.77],[91.05,26.78],[91.1,26.82],[91.34,26.78],[91.41,26.84],[91.49,26.79],[91.69,26.81],[91.86,26.91],[92.06,26.85],[92.11,26.89],[92.02,27.16],[92.07,27.22],[92.04,27.27],[92.12,27.29],[92.06,27.33],[92.02,27.48],[91.65,27.48],[91.56,27.58],[91.64,27.76],[91.55,27.86],[91.82,27.81],[91.92,27.72],[92.21,27.86],[92.26,27.86],[92.32,27.78],[92.5,27.84],[92.56,27.82],[92.74,27.99],[92.66,28.06],[92.69,28.13],[92.96,28.26],[93.0,28.23],[93.02,28.3],[93.22,28.33],[93.23,28.4],[93.18,28.44],[93.28,28.5],[93.34,28.64],[93.84,28.71],[93.93,28.67],[94.0,28.78],[93.99,28.84],[94.16,28.95],[94.21,29.08],[94.43,29.23],[94.56,29.23],[94.63,29.35],[94.78,29.24],[94.8,29.16],[94.87,29.18],[95.02,29.13],[95.0,29.17],[95.41,29.03],[95.48,29.07],[95.5,29.14],[95.55,29.13],[95.54,29.21],[96.08,29.46],[96.24,29.24],[96.36,29.29],[96.39,29.26],[96.35,29.17],[96.11,29.08],[96.18,28.99],[96.17,28.91],[96.35,29.03],[96.53,29.08],[96.48,28.99],[96.62,28.78],[96.59,28.72],[96.47,28.69],[96.49,28.64],[96.33,28.53],[96.37,28.49],[96.26,28.41],[96.37,28.39],[96.4,28.34],[96.46,28.42],[96.66,28.47],[96.77,28.37],[96.9,28.39],[97.0,28.32],[97.09,28.37],[97.4,28.2],[97.33,28.16],[97.31,28.08],[97.42,28.02],[97.39,27.9],[97.26,27.91],[96.9,27.62],[96.94,27.53],[96.91,27.46],[97.17,27.16],[97.15,27.1],[96.87,27.2],[96.89,27.26],[96.8,27.35],[96.62,27.37],[96.52,27.29],[96.31,27.3],[96.1,27.23],[95.95,27.06],[95.81,27.02],[95.73,26.89],[95.67,26.91],[95.61,26.82],[95.53,26.83],[95.42,26.7],[95.3,26.66],[95.24,26.69],[95.07,26.46],[95.14,26.39],[95.12,26.11],[95.19,26.08],[95.02,25.91],[95.05,25.76],[94.94,25.67],[94.9,25.57],[94.81,25.5],[94.66,25.47],[94.59,25.22],[94.75,25.14],[94.74,25.03],[94.61,24.72],[94.55,24.72],[94.33,24.34],[94.16,23.85],[93.95,23.95],[93.82,23.93],[93.76,24.01],[93.62,24.01],[93.51,23.95],[93.35,24.11],[93.44,23.68],[93.41,23.39],[93.37,23.35],[93.39,23.14],[93.3,23.01],[93.13,23.05],[93.17,22.92],[93.09,22.71],[93.21,22.26],[93.15,22.25],[93.15,22.18],[93.05,22.2],[93.07,22.1],[93.01,22.1],[93.01,21.98],[92.96,22.03],[92.91,21.95],[92.87,22.07],[92.72,22.15],[92.68,22.02],[92.61,21.98],[92.53,22.68],[92.45,22.89],[92.38,22.93],[92.36,23.24],[92.41,23.25],[92.26,23.8],[92.22,23.66],[92.18,23.74],[92.07,23.64],[91.96,23.73],[91.98,23.48],[91.85,23.4],[91.77,23.26],[91.84,23.09],[91.62,22.94],[91.55,22.99],[91.51,23.18],[91.42,23.28],[91.39,23.18],[91.42,23.06],[91.36,23.1],[91.3,23.32],[91.33,23.36],[91.17,23.6],[91.16,23.67],[91.2,23.65],[91.21,23.69],[91.16,23.69],[91.16,23.74],[91.22,23.74],[91.24,23.93],[91.28,23.93],[91.28,23.98],[91.38,23.98],[91.38,24.11],[91.6,24.08],[91.67,24.23],[91.69,24.16],[91.76,24.14],[91.74,24.25],[91.85,24.23],[91.9,24.14],[91.92,24.34],[92.0,24.32],[91.97,24.39],[92.12,24.38],[92.19,24.52],[92.27,24.4],[92.23,24.56],[92.3,24.74],[92.24,24.9],[92.3,24.92],[92.39,24.85],[92.49,24.87],[92.49,24.95],[92.42,25.0],[92.48,25.11],[92.43,25.03],[92.07,25.19],[91.75,25.18],[91.64,25.12],[91.62,25.18],[91.47,25.13],[91.27,25.2],[90.74,25.15],[90.67,25.2],[90.45,25.14],[89.97,25.3],[89.83,25.3],[89.89,25.63],[89.81,25.82],[89.89,25.94],[89.83,25.94],[89.88,25.98],[89.82,25.98],[89.81,26.04],[89.79,26.02],[89.79,26.1],[89.69,26.16],[89.69,26.23],[89.64,26.23],[89.66,26.18],[89.59,26.16],[89.65,26.06],[89.61,26.06],[89.55,25.96],[89.43,26.05],[89.35,26.01],[89.17,26.13],[89.09,26.4],[88.96,26.46],[88.92,26.37],[89.07,26.26],[88.97,26.24],[88.89,26.29],[88.85,26.23],[88.75,26.35],[88.7,26.33],[88.62,26.47],[88.56,26.46],[88.44,26.55],[88.42,26.63],[88.33,26.48],[88.36,26.45],[88.37,26.49],[88.48,26.46],[88.52,26.36],[88.46,26.37],[88.35,26.28],[88.35,26.22],[88.18,26.15],[88.19,26.02],[88.09,25.91],[88.12,25.8],[88.27,25.81],[88.46,25.66],[88.45,25.6],[88.54,25.51],[88.7,25.47],[88.81,25.52],[88.84,25.36],[89.01,25.29],[88.92,25.17],[88.84,25.21],[88.8,25.17],[88.71,25.21],[88.45,25.2],[88.45,25.04],[88.4,24.95],[88.34,24.94],[88.33,24.87],[88.26,24.88],[88.23,24.96],[88.14,24.94],[88.18,24.86],[88.01,24.67],[88.15,24.51],[88.33,24.38],[88.73,24.28],[88.69,24.11],[88.73,23.99],[88.77,23.98],[88.73,23.91],[88.58,23.86],[88.56,23.64],[88.74,23.48],[88.8,23.49],[88.75,23.31],[88.7,23.3],[88.72,23.25],[88.99,23.21],[88.87,23.1],[88.85,23.0],[88.97,22.84],[88.92,22.76],[88.95,22.66],[88.91,22.68],[88.86,22.66],[88.86,22.69],[88.85,22.71],[88.81,22.71],[88.85,22.75],[88.81,22.73],[88.81,22.71],[88.86,22.69],[88.86,22.66],[88.91,22.68],[88.94,22.57],[88.9,22.56],[88.87,22.55],[88.84,22.51],[88.85,22.43],[88.77,22.56],[88.77,22.51],[88.69,22.52],[88.68,22.59],[88.69,22.52],[88.78,22.51],[88.8,22.44],[88.82,22.43],[88.85,22.43],[88.88,22.36],[88.85,22.36],[88.82,22.36],[88.73,22.2],[88.7,22.21],[88.67,22.22],[88.64,22.22],[88.67,22.34],[88.63,22.22],[88.64,22.21],[88.67,22.2],[88.62,22.11],[88.6,22.16],[88.57,22.19],[88.6,22.16],[88.6,22.13],[88.62,22.1],[88.63,22.05],[88.63,22.05],[88.64,22.05],[88.6,22.02],[88.61,22.05],[88.6,22.06],[88.6,22.07],[88.6,22.07],[88.6,22.06],[88.6,22.05],[88.6,22.02],[88.61,22.02],[88.61,21.91],[88.58,21.89],[88.55,21.97],[88.57,21.9],[88.54,21.9],[88.53,21.85],[88.49,21.88],[88.52,21.91],[88.53,21.93],[88.49,21.97],[88.55,22.04],[88.49,21.97],[88.52,21.92],[88.48,21.91],[88.47,21.9],[88.47,21.96],[88.45,21.97],[88.46,22.01],[88.44,21.99],[88.45,21.96],[88.47,21.96],[88.46,21.92],[88.42,21.91],[88.41,21.89],[88.38,21.97],[88.39,21.8],[88.36,21.92],[88.35,21.86],[88.27,21.88],[88.31,21.85],[88.26,21.81],[88.26,21.8],[88.26,21.79],[88.28,21.76],[88.25,21.8],[88.27,21.73],[88.16,21.88],[88.18,21.93],[88.15,21.96],[88.22,22.08],[88.2,22.17],[88.07,22.21],[88.11,22.3],[88.05,22.22],[87.98,22.25],[87.95,22.41],[87.92,22.43],[87.88,22.44],[87.94,22.37],[87.94,22.26],[87.98,22.22],[88.01,22.2],[88.14,22.18],[88.19,22.1],[88.06,22.01],[88.03,22.06],[87.99,22.1],[87.96,22.1],[88.05,22.01],[87.93,21.8],[87.79,21.7],[87.48,21.62],[87.38,21.55],[87.2,21.55],[87.11,21.52],[86.91,21.34],[86.82,21.19],[86.97,20.82],[86.96,20.78],[86.94,20.79],[86.88,20.8],[86.83,20.77],[86.76,20.61],[86.82,20.64],[86.8,20.68],[86.83,20.67],[86.84,20.65],[86.84,20.65],[86.93,20.71],[87.0,20.7],[87.05,20.71],[86.73,20.48],[86.77,20.33],[86.46,20.16],[86.49,20.16],[86.46,20.11],[86.47,20.1],[86.5,20.16],[86.56,20.2],[86.52,20.17],[86.48,20.11],[86.44,20.06],[86.41,20.06],[86.39,19.98],[86.29,20.06],[86.29,20.05],[86.27,20.06],[86.26,20.06],[86.25,20.05],[86.24,20.03],[86.34,19.97],[86.32,19.95],[86.36,19.95],[85.9,19.83],[85.42,19.62],[84.91,19.27],[84.73,19.1],[84.75,19.05],[84.12,18.31],[83.57,18.02],[83.46,17.92],[83.34,17.72],[83.26,17.71],[83.3,17.68],[83.21,17.59],[82.61,17.3],[82.37,17.12],[82.25,16.93],[82.31,16.84],[82.35,16.85],[82.32,16.99],[82.36,16.96],[82.37,16.9],[82.34,16.74],[82.25,16.72],[82.26,16.64],[82.29,16.61],[82.26,16.59],[82.3,16.59],[82.27,16.56],[82.31,16.57],[81.72,16.31],[81.54,16.36],[81.41,16.34],[81.38,16.36],[81.37,16.36],[81.35,16.33],[81.39,16.34],[81.23,16.24],[81.15,15.97],[81.0,15.84],[81.01,15.77],[80.97,15.73],[80.82,15.71],[80.78,15.78],[80.81,15.74],[80.81,15.84],[80.77,15.87],[80.69,15.88],[80.43,15.81],[80.27,15.67],[80.2,15.5],[80.2,15.47],[80.08,15.32],[80.09,15.22],[80.05,15.21],[80.06,15.19],[80.08,15.19],[80.05,15.08],[80.09,14.81],[80.06,14.82],[80.2,14.59],[80.12,14.11],[80.24,13.82],[80.24,13.64],[80.32,13.43],[80.15,13.72],[80.14,13.61],[80.11,13.71],[80.05,13.59],[80.12,13.51],[80.26,13.47],[80.33,13.37],[80.33,13.44],[80.34,13.27],[80.16,12.47],[79.94,12.22],[80.01,12.25],[79.8,11.81],[79.66,11.87],[79.8,11.81],[79.76,11.56],[79.84,11.36],[79.85,11.24],[79.8,11.24],[79.84,11.23],[79.85,11.24],[79.86,10.98],[79.73,10.99],[79.7,10.92],[79.75,10.98],[79.85,10.98],[79.83,10.83],[79.88,10.3],[79.74,10.28],[79.78,10.3],[79.71,10.33],[79.64,10.32],[79.63,10.36],[79.61,10.32],[79.55,10.31],[79.66,10.29],[79.67,10.3],[79.68,10.29],[79.74,10.28],[79.53,10.31],[79.59,10.33],[79.55,10.35],[79.29,10.26],[79.23,10.14],[79.27,10.04],[78.98,9.69],[78.9,9.49],[79.03,9.32],[79.19,9.28],[78.83,9.27],[78.66,9.16],[78.49,9.15],[78.37,9.09],[78.17,8.88],[78.16,8.77],[78.23,8.75],[78.17,8.75],[78.1,8.65],[78.1,8.58],[78.14,8.59],[78.1,8.59],[78.12,8.6],[78.13,8.64],[78.14,8.59],[78.13,8.5],[78.07,8.37],[77.8,8.25],[77.75,8.18],[77.58,8.14],[77.55,8.08],[77.32,8.12],[77.09,8.3],[77.16,8.31],[77.09,8.3],[76.98,8.38],[76.55,8.9],[76.46,9.13],[76.48,9.13],[76.49,9.17],[76.47,9.14],[76.42,9.25],[76.46,9.14],[76.34,9.42],[76.24,9.97],[76.25,9.97],[76.27,9.93],[76.3,9.92],[76.26,9.92],[76.28,9.83],[76.32,9.88],[76.32,9.81],[76.35,9.71],[76.32,9.87],[76.35,9.83],[76.37,9.82],[76.36,9.7],[76.4,9.67],[76.37,9.61],[76.36,9.53],[76.5,9.53],[76.42,9.57],[76.38,9.86],[76.34,9.92],[76.34,9.89],[76.32,9.89],[76.32,9.89],[76.3,9.93],[76.31,9.95],[76.3,9.94],[76.3,9.93],[76.27,10.03],[76.26,10.03],[76.26,10.02],[76.27,9.98],[76.25,10.03],[76.26,10.08],[76.21,10.15],[76.22,9.98],[76.19,10.19],[76.16,10.19],[76.1,10.38],[76.03,10.53],[76.05,10.53],[76.05,10.54],[76.07,10.54],[76.04,10.58],[76.05,10.54],[76.03,10.54],[76.04,10.51],[75.91,10.79],[75.83,11.12],[75.86,11.14],[75.8,11.16],[75.83,11.16],[75.83,11.18],[75.8,11.16],[75.68,11.45],[75.62,11.48],[75.47,11.76],[75.5,11.8],[75.45,11.77],[75.3,11.94],[75.4,11.92],[75.37,11.96],[75.32,11.95],[75.31,11.97],[75.28,12.0],[75.3,11.95],[75.22,12.09],[75.23,12.02],[75.2,12.01],[75.18,12.08],[75.22,12.07],[75.17,12.09],[75.19,12.1],[75.2,12.12],[75.19,12.13],[75.18,12.1],[75.13,12.21],[75.12,12.21],[75.06,12.36],[74.97,12.5],[74.87,12.75],[74.99,12.79],[74.87,12.75],[74.69,13.35],[74.71,13.33],[74.72,13.28],[74.73,13.28],[74.73,13.28],[74.74,13.29],[74.71,13.34],[74.7,13.35],[74.61,13.87],[74.63,13.85],[74.5,14.02],[74.35,14.5],[74.39,14.55],[74.34,14.57],[74.36,14.52],[74.31,14.52],[74.25,14.74],[74.2,14.72],[74.09,14.8],[74.13,14.91],[74.04,14.92],[74.05,14.99],[73.91,15.08],[73.95,15.15],[73.89,15.35],[73.78,15.41],[73.88,15.4],[73.9,15.41],[73.79,15.46],[73.59,15.91],[73.51,15.94],[73.48,16.04],[73.45,16.06],[73.44,16.29],[73.39,16.34],[73.41,16.36],[73.37,16.36],[73.41,16.4],[73.37,16.4],[73.32,16.51],[73.32,16.56],[73.35,16.5],[73.39,16.51],[73.35,16.56],[73.39,16.55],[73.32,16.6],[73.35,16.6],[73.31,16.73],[73.33,16.82],[73.3,16.82],[73.31,16.89],[73.28,16.89],[73.29,16.99],[73.25,17.03],[73.32,17.04],[73.28,17.04],[73.3,17.08],[73.19,17.3],[73.24,17.31],[73.17,17.41],[73.21,17.44],[73.14,17.56],[73.17,17.58],[73.09,17.84],[73.13,17.82],[73.05,17.91],[73.09,17.94],[73.03,17.94],[73.0,18.02],[73.02,18.02],[73.05,18.04],[73.03,18.03],[73.04,18.05],[73.03,18.05],[73.02,18.03],[72.99,18.06],[72.99,18.2],[72.93,18.22],[72.96,18.28],[73.07,18.22],[73.09,18.15],[73.08,18.23],[73.04,18.3],[73.09,18.29],[73.09,18.33],[73.04,18.3],[73.03,18.26],[72.91,18.35],[72.93,18.54],[72.86,18.7],[72.87,18.8],[72.98,18.81],[72.99,18.87],[72.93,18.85],[72.91,18.9],[72.96,18.91],[72.96,18.97],[72.98,18.96],[73.01,18.98],[73.03,18.99],[73.03,19.0],[72.96,19.06],[72.91,18.99],[72.86,19.0],[72.81,18.89],[72.83,19.18],[72.79,19.13],[72.78,19.17],[72.84,19.27],[72.78,19.19],[72.8,19.33],[72.74,19.46],[72.79,19.53],[72.72,19.54],[72.72,19.76],[72.69,19.74],[72.65,19.85],[72.69,19.96],[72.75,19.93],[72.71,20.07],[72.78,20.33],[72.89,20.53],[72.85,20.74],[72.89,20.75],[72.83,20.78],[72.79,20.95],[72.78,20.91],[72.75,20.95],[72.72,21.05],[72.77,21.07],[72.7,21.07],[72.72,21.14],[72.68,21.16],[72.67,21.16],[72.63,21.08],[72.62,21.22],[72.65,21.23],[72.59,21.28],[72.7,21.46],[72.65,21.43],[72.67,21.52],[72.74,21.55],[72.68,21.54],[72.63,21.49],[72.6,21.55],[72.63,21.62],[72.84,21.67],[72.54,21.66],[72.51,21.7],[72.57,21.82],[72.52,21.86],[72.5,21.96],[72.58,22.2],[72.76,22.17],[72.81,22.25],[72.88,22.22],[72.92,22.28],[72.75,22.23],[72.64,22.28],[72.54,22.24],[72.54,22.28],[72.49,22.2],[72.49,22.25],[72.39,22.31],[72.41,22.36],[72.36,22.38],[72.4,22.35],[72.37,22.32],[72.42,22.23],[72.4,22.2],[72.36,22.27],[72.36,22.21],[72.39,22.17],[72.36,22.19],[72.34,22.12],[72.32,22.15],[72.32,22.18],[72.29,22.2],[72.31,22.18],[72.31,22.14],[72.32,22.13],[72.28,21.93],[72.24,22.05],[72.3,22.06],[72.3,22.11],[72.27,22.11],[72.28,22.08],[72.23,22.05],[72.23,22.02],[72.17,22.04],[72.2,22.0],[72.21,22.0],[72.23,22.01],[72.22,21.96],[72.15,21.98],[72.25,21.9],[72.26,21.74],[72.18,21.82],[72.31,21.63],[72.22,21.44],[72.11,21.28],[72.08,21.3],[72.11,21.2],[71.51,20.95],[71.44,20.87],[71.38,20.87],[70.96,20.72],[71.0,20.71],[70.87,20.71],[70.92,20.74],[70.86,20.74]]],[[[92.52,10.9],[92.6,10.68],[92.54,10.61],[92.57,10.58],[92.51,10.51],[92.39,10.53],[92.42,10.61],[92.38,10.78],[92.52,10.9]]],[[[92.72,11.85],[92.68,11.82],[92.72,11.82],[92.75,11.93],[92.79,11.9],[92.76,11.7],[92.7,11.71],[92.67,11.65],[92.69,11.62],[92.72,11.69],[92.76,11.67],[92.71,11.48],[92.62,11.56],[92.64,11.64],[92.61,11.63],[92.59,11.72],[92.56,11.69],[92.51,11.85],[92.56,11.95],[92.61,11.87],[92.62,12.1],[92.64,12.12],[92.66,12.22],[92.66,12.18],[92.7,12.24],[92.7,12.17],[92.76,12.18],[92.74,12.11],[92.74,12.07],[92.78,12.05],[92.74,12.04],[92.77,12.0],[92.73,11.99],[92.71,11.93],[92.72,11.85]]],[[[92.79,12.47],[92.9,12.32],[92.72,12.3],[92.68,12.61],[92.75,12.67],[92.79,12.62],[92.79,12.67],[92.78,12.71],[92.73,12.67],[92.75,12.72],[92.72,12.83],[92.76,12.86],[92.78,12.81],[92.79,12.89],[92.81,12.9],[92.84,12.88],[92.87,12.88],[92.9,12.9],[92.9,12.93],[92.98,12.71],[92.97,12.5],[92.91,12.41],[92.91,12.42],[92.88,12.44],[92.89,12.45],[92.83,12.49],[92.85,12.46],[92.9,12.42],[92.79,12.47]]],[[[93.75,6.96],[93.66,7.01],[93.66,7.13],[93.69,7.19],[93.85,7.24],[93.95,7.0],[93.91,7.0],[93.95,6.96],[93.9,6.9],[93.9,6.81],[93.85,6.82],[93.83,6.75],[93.8,6.76],[93.82,6.82],[93.75,6.96]]],[[[93.07,13.27],[93.03,13.18],[93.03,13.08],[92.97,13.01],[92.94,13.08],[92.89,13.06],[92.92,13.05],[92.9,13.02],[92.91,13.0],[92.94,12.97],[92.88,12.98],[92.85,12.93],[92.87,12.88],[92.84,12.88],[92.79,12.91],[92.83,13.01],[92.79,13.02],[92.85,13.14],[92.81,13.15],[92.85,13.26],[92.82,13.28],[92.84,13.4],[92.87,13.4],[92.88,13.43],[92.87,13.47],[92.93,13.5],[92.92,13.54],[92.99,13.53],[92.99,13.57],[93.01,13.54],[93.03,13.57],[93.02,13.43],[93.07,13.41],[93.03,13.37],[93.06,13.38],[93.09,13.34],[93.07,13.3],[93.04,13.37],[92.95,13.34],[93.01,13.28],[93.07,13.27]]]]};
       const AREA_BOUNDS = L.latLngBounds([AREA.south, AREA.west], [AREA.north, AREA.east]);
 
       // ---- Map setup: panning is limited to the supported area ----
@@ -388,7 +479,7 @@
         zoomControl: true,
         maxBounds: AREA_BOUNDS.pad(0.1),
         maxBoundsViscosity: 1.0,
-        minZoom: 8,
+        minZoom: 4,
       });
       map.fitBounds(AREA_BOUNDS);
       // Leaflet can initialise with incorrect dimensions inside an iframe; invalidate after render.
@@ -418,7 +509,7 @@
       map.attributionControl.addAttribution('Place &amp; route data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors');
       L.control.scale({ imperial: false }).addTo(map);
       // Outline of the supported area so users can see where they can click
-      L.rectangle(AREA_BOUNDS, { color: '#22d3ee', weight: 2, dashArray: '6 6', fill: false, interactive: false }).addTo(map);
+      L.geoJSON(INDIA_OUTLINE, { style: { color: '#22d3ee', weight: 2, fillColor: '#22d3ee', fillOpacity: 0.05 }, interactive: false }).addTo(map);
 
       let routeLayer = null;
       let markers = [];
@@ -535,7 +626,7 @@
 
         // viewbox + bounded=1 restricts results to the supported area (viewbox is left,top,right,bottom)
         const viewbox = `${AREA.west},${AREA.north},${AREA.east},${AREA.south}`;
-        const url = `${NOMINATIM}?format=jsonv2&limit=3&bounded=1&viewbox=${viewbox}&q=${encodeURIComponent(query.trim())}`;
+        const url = `${NOMINATIM}?format=jsonv2&limit=3&bounded=1&countrycodes=in&viewbox=${viewbox}&q=${encodeURIComponent(query.trim())}`;
         const data = await fetchJson(url, 'The location search service (Nominatim)');
         if (!Array.isArray(data)) throw new AppError('The location search service returned unexpected data. Try again later.');
 
@@ -550,7 +641,7 @@
       // ---- Routing ----
       async function fetchRoute(a, b) {
         const coords = `${a.lon},${a.lat};${b.lon},${b.lat}`;
-        const url = `${OSRM}/${coords}?overview=full&geometries=geojson`;
+        const url = `${OSRM}/${coords}?overview=full&geometries=geojson&steps=true`;
         const data = await fetchJson(url, 'The routing service (OSRM)');
 
         if (!data || data.code !== 'Ok') {
@@ -567,6 +658,7 @@
           latlngs: line.coordinates.map(([lon, lat]) => [lat, lon]),
           distance: Number.isFinite(r.distance) ? r.distance : null,
           duration: Number.isFinite(r.duration) ? r.duration : null,
+          steps: (r.legs || []).flatMap((l) => l.steps || []),
         };
       }
 
@@ -628,6 +720,7 @@
         el.refit.disabled = true;
         el.summary.hidden = true;
         el.empty.hidden = false;
+        renderSteps(null);
       }
 
       function showRoute(a, b, route) {
@@ -648,6 +741,7 @@
         el.empty.hidden = true;
         el.summary.hidden = false;
         el.refit.disabled = false;
+        renderSteps(route);
       }
 
       function refit() {
@@ -798,6 +892,170 @@
           { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
         );
       });
+
+      // ================= Navigation (views) =================
+      const views = ['plan', 'directions', 'explore', 'about'];
+      const navLinks = document.querySelectorAll('[data-nav]');
+      function showView(name) {
+        if (!views.includes(name)) name = 'plan';
+        document.querySelectorAll('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== name; });
+        navLinks.forEach((a) => {
+          if (a.dataset.nav === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+        });
+        document.querySelector('aside').scrollTop = 0;
+      }
+      window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
+      showView(location.hash.slice(1));
+
+      // ================= Turn-by-turn directions =================
+      const dirEl = { empty: $('dir-empty'), wrap: $('dir-wrap'), list: $('dir-list'), total: $('dir-total'), badge: $('nav-steps') };
+      let stepMarker = null;
+      const ARROWS = { 'uturn': '↶', 'sharp left': '↰', 'left': '←', 'slight left': '↖', 'straight': '↑',
+        'slight right': '↗', 'right': '→', 'sharp right': '↱' };
+      const compass = (b) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((b || 0) / 45) % 8];
+
+      function stepText(s) {
+        const m = s.maneuver || {};
+        const road = s.name ? s.name : 'the road';
+        const mod = m.modifier || 'straight';
+        switch (m.type) {
+          case 'depart': return `Head ${compass(m.bearing_after)} on ${road}`;
+          case 'arrive': return 'Arrive at your destination';
+          case 'turn': return mod === 'straight' ? `Continue on ${road}` : `Turn ${mod} onto ${road}`;
+          case 'end of road': return `At the end of the road turn ${mod} onto ${road}`;
+          case 'fork': return `Keep ${mod} at the fork onto ${road}`;
+          case 'merge': return `Merge ${mod} onto ${road}`;
+          case 'on ramp': case 'off ramp': return `Take the ramp onto ${road}`;
+          case 'roundabout': case 'rotary': case 'roundabout turn':
+            return m.exit ? `At the roundabout take exit ${m.exit} onto ${road}` : `Go through the roundabout onto ${road}`;
+          case 'new name': case 'continue': return `Continue onto ${road}`;
+          default: return `Continue on ${road}`;
+        }
+      }
+
+      function renderSteps(route) {
+        dirEl.list.innerHTML = '';
+        if (stepMarker) { map.removeLayer(stepMarker); stepMarker = null; }
+        const steps = route && route.steps ? route.steps : [];
+        const has = steps.length > 0;
+        dirEl.empty.hidden = has;
+        dirEl.wrap.hidden = !has;
+        dirEl.badge.hidden = !has;
+        if (!has) return;
+        dirEl.badge.textContent = steps.length;
+        dirEl.total.textContent = `${steps.length} steps · ${fmtDistance(route.distance)} · ${fmtDuration(route.duration)}`;
+        steps.forEach((s, i) => {
+          const m = s.maneuver || {};
+          const li = document.createElement('li');
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'step';
+          const icon = document.createElement('span');
+          icon.className = 'step-icon';
+          icon.setAttribute('aria-hidden', 'true');
+          icon.textContent = m.type === 'arrive' ? '⚑' : m.type === 'depart' ? '●' : (ARROWS[m.modifier] || '↑');
+          const body = document.createElement('span');
+          body.className = 'min-w-0 flex-1';
+          const t = document.createElement('span');
+          t.className = 'block text-sm font-medium';
+          t.textContent = `${i + 1}. ${stepText(s)}`;
+          const d = document.createElement('span');
+          d.className = 'block text-xs text-slate-400';
+          d.textContent = m.type === 'arrive' ? '' : `${fmtDistance(s.distance)} · ${fmtDuration(s.duration)}`;
+          body.append(t, d);
+          btn.append(icon, body);
+          btn.addEventListener('click', () => {
+            if (!m.location) return;
+            const ll = [m.location[1], m.location[0]];
+            if (stepMarker) map.removeLayer(stepMarker);
+            stepMarker = L.circleMarker(ll, { radius: 9, color: '#fde047', weight: 3, fillColor: '#06b6d4', fillOpacity: 1 }).addTo(map);
+            map.flyTo(ll, 16, { duration: 0.8 });
+          });
+          li.appendChild(btn);
+          dirEl.list.appendChild(li);
+        });
+      }
+
+      // ================= Explore India: cities and presets =================
+      const CITIES = [
+        { n: 'Delhi', r: 'North', lat: 28.6139, lon: 77.2090 }, { n: 'Chandigarh', r: 'North', lat: 30.7333, lon: 76.7794 },
+        { n: 'Amritsar', r: 'North', lat: 31.6340, lon: 74.8723 }, { n: 'Srinagar', r: 'North', lat: 34.0837, lon: 74.7973 },
+        { n: 'Shimla', r: 'North', lat: 31.1048, lon: 77.1734 }, { n: 'Dehradun', r: 'North', lat: 30.3165, lon: 78.0322 },
+        { n: 'Jaipur', r: 'North', lat: 26.9124, lon: 75.7873 }, { n: 'Lucknow', r: 'North', lat: 26.8467, lon: 80.9462 },
+        { n: 'Varanasi', r: 'North', lat: 25.3176, lon: 82.9739 },
+        { n: 'Mumbai', r: 'West', lat: 19.0760, lon: 72.8777 }, { n: 'Pune', r: 'West', lat: 18.5204, lon: 73.8567 },
+        { n: 'Ahmedabad', r: 'West', lat: 23.0225, lon: 72.5714 }, { n: 'Panaji', r: 'West', lat: 15.4909, lon: 73.8278 },
+        { n: 'Bengaluru', r: 'South', lat: 12.9716, lon: 77.5946 }, { n: 'Chennai', r: 'South', lat: 13.0827, lon: 80.2707 },
+        { n: 'Hyderabad', r: 'South', lat: 17.3850, lon: 78.4867 }, { n: 'Coimbatore', r: 'South', lat: 11.0168, lon: 76.9558 },
+        { n: 'Kochi', r: 'South', lat: 9.9312, lon: 76.2673 }, { n: 'Thiruvananthapuram', r: 'South', lat: 8.5241, lon: 76.9366 },
+        { n: 'Visakhapatnam', r: 'South', lat: 17.6868, lon: 83.2185 },
+        { n: 'Kolkata', r: 'East', lat: 22.5726, lon: 88.3639 }, { n: 'Patna', r: 'East', lat: 25.5941, lon: 85.1376 },
+        { n: 'Bhubaneswar', r: 'East', lat: 20.2961, lon: 85.8245 }, { n: 'Ranchi', r: 'East', lat: 23.3441, lon: 85.3096 },
+        { n: 'Bhopal', r: 'Central', lat: 23.2599, lon: 77.4126 }, { n: 'Raipur', r: 'Central', lat: 21.2514, lon: 81.6296 },
+        { n: 'Guwahati', r: 'Northeast', lat: 26.1445, lon: 91.7362 }, { n: 'Shillong', r: 'Northeast', lat: 25.5788, lon: 91.8933 },
+        { n: 'Gangtok', r: 'Northeast', lat: 27.3389, lon: 88.6065 }, { n: 'Imphal', r: 'Northeast', lat: 24.8170, lon: 93.9368 },
+      ];
+      const PRESETS = [['Delhi', 'Jaipur'], ['Mumbai', 'Pune'], ['Bengaluru', 'Chennai'], ['Bengaluru', 'Coimbatore'],
+        ['Hyderabad', 'Visakhapatnam'], ['Kochi', 'Thiruvananthapuram'], ['Delhi', 'Chandigarh'], ['Kolkata', 'Bhubaneswar']];
+      const cityByName = Object.fromEntries(CITIES.map((c) => [c.n, c]));
+      const cityMarkers = {};
+
+      function setCity(which, c) {
+        setPick(which, c.lat, c.lon, c.n);
+        setStatus('idle', `${which === 'start' ? 'Start' : 'Destination'} set to ${c.n}. ${inputOf(which === 'start' ? 'dest' : 'start').value.trim() ? 'Choose Show route.' : 'Now set the other end.'}`);
+        location.hash = '#plan';
+      }
+
+      CITIES.forEach((c) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'city-dot-popup';
+        wrap.innerHTML = `<strong>${escapeHtml(c.n)}</strong><br>`;
+        const bs = document.createElement('button'); bs.type = 'button'; bs.textContent = 'Start here';
+        const be = document.createElement('button'); be.type = 'button'; be.className = 'end'; be.textContent = 'Go here';
+        bs.addEventListener('click', () => { map.closePopup(); setCity('start', c); });
+        be.addEventListener('click', () => { map.closePopup(); setCity('dest', c); });
+        wrap.append(bs, be);
+        cityMarkers[c.n] = L.circleMarker([c.lat, c.lon], { radius: 5, color: '#fff', weight: 1.5, fillColor: '#22d3ee', fillOpacity: 1 })
+          .addTo(map).bindTooltip(c.n).bindPopup(wrap);
+      });
+
+      const groups = $('city-groups');
+      ['North', 'West', 'South', 'East', 'Central', 'Northeast'].forEach((region) => {
+        const sec = document.createElement('section');
+        const h = document.createElement('h3');
+        h.className = 'mb-2 text-sm font-semibold uppercase tracking-wide text-cyan-300';
+        h.textContent = region;
+        const row = document.createElement('div');
+        row.className = 'flex flex-wrap gap-2';
+        CITIES.filter((c) => c.r === region).forEach((c) => {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'chip'; b.textContent = c.n;
+          b.addEventListener('click', () => {
+            map.flyTo([c.lat, c.lon], 10, { duration: 0.9 });
+            map.once('moveend', () => cityMarkers[c.n].openPopup());
+          });
+          row.appendChild(b);
+        });
+        sec.append(h, row);
+        groups.appendChild(sec);
+      });
+
+      PRESETS.forEach(([a, b]) => {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'chip'; btn.textContent = `${a} → ${b}`;
+        btn.addEventListener('click', () => {
+          if (busy) return;
+          setPick('start', cityByName[a].lat, cityByName[a].lon, a);
+          setPick('dest', cityByName[b].lat, cityByName[b].lon, b);
+          location.hash = '#plan';
+          lookup();
+        });
+        $('presets').appendChild(btn);
+      });
+
+      const fitIndia = () => map.fitBounds(AREA_BOUNDS);
+      $('fit-india').addEventListener('click', fitIndia);
+      $('explore-fit').addEventListener('click', fitIndia);
 
       // 6. window resize: keep the route in view when layout changes
       window.addEventListener('resize', () => { map.invalidateSize(); });
