@@ -21,7 +21,8 @@ st.markdown(
     # Leave room for Streamlit's fixed header so it does not cover the page's nav bar.
     ".block-container{padding:3.75rem 1rem 0 1rem;max-width:100%}"
     "header[data-testid='stHeader']{background:transparent}"
-    "iframe{border:0}"
+    # Fit the embedded app to the browser window so the page never scrolls the nav bar out of view.
+    "iframe{border:0;height:calc(100vh - 4.5rem)!important;min-height:600px}"
     "</style>",
     unsafe_allow_html=True,
 )
