@@ -6,6 +6,7 @@ and covers all of India. Keep index.html in the same folder as this file.
 The sample route is inlined because an embedded page cannot fetch sibling files.
 """
 import json
+import re
 from pathlib import Path
 
 import streamlit as st
@@ -28,8 +29,36 @@ st.markdown(
 )
 
 
+def inline_local_assets(html: str) -> str:
+    """Inline local <link rel="stylesheet" href="x.css"> and <script src="x.js"> files.
+
+    Streamlit embeds the page as a string (srcdoc iframe), so relative files such as
+    styles.css and app.js cannot be fetched by the browser. Remote URLs are left alone.
+    """
+
+    def css(m):
+        href = m.group(1)
+        f = HERE / href
+        if re.match(r"^(https?:)?//", href) or not f.is_file():
+            return m.group(0)
+        return "<style>\n" + f.read_text(encoding="utf-8").replace("</style", "<\\/style") + "\n</style>"
+
+    def js(m):
+        src = m.group(1)
+        f = HERE / src
+        if re.match(r"^(https?:)?//", src) or not f.is_file():
+            return m.group(0)
+        return "<script>\n" + f.read_text(encoding="utf-8").replace("</script", "<\\/script") + "\n</script>"
+
+    html = re.sub(r'<link\b[^>]*rel=["\']stylesheet["\'][^>]*href=["\']([^"\']+)["\'][^>]*>', css, html)
+    html = re.sub(r'<link\b[^>]*href=["\']([^"\']+)["\'][^>]*rel=["\']stylesheet["\'][^>]*>', css, html)
+    html = re.sub(r'<script\b[^>]*src=["\']([^"\']+)["\'][^>]*>\s*</script>', js, html)
+    return html
+
+
 def load_page() -> str:
     html = (HERE / "index.html").read_text(encoding="utf-8")
+    html = inline_local_assets(html)
     sample_path = HERE / "sample-route.geojson"
     if sample_path.exists():
         sample = json.dumps(json.loads(sample_path.read_text(encoding="utf-8")))
